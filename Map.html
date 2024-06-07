@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Map with Google Sheet Data and Search</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-search/dist/leaflet-search.min.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <script src="https://unpkg.com/leaflet-search/dist/leaflet-search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.21.1/axios.min.js"></script>
+    <style>
+        #map { height: 100vh; }
+    </style>
+</head>
+<body>
+    <h1>Map with Google Sheet Data and Search</h1>
+    <div id="map"></div>
+    
+    <script>
+        // Initialize the map
+        var map = L.map('map').setView([0, 0], 2);
+
+        // Add base maps
+        var Esri_WorldImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        }).addTo(map);
+
+      
+
+        var baseMaps = {
+            "Esri World Imagery": Esri_WorldImagery
+
+        };
+
+        L.control.layers(baseMaps).addTo(map);
+
+        // Google Sheets API URL
+        var sheetID = '16qE_t85zmikQIZSurOhXDty0eeqW0GiTGXJfAZm1IP0';
+        var apiKey = 'AIzaSyD6S4e2qcTTBEaE-wS_XpMGa35UI1hJbTg';
+        var range = 'Sheet1!A:E';  // Adjust range as needed
+        var url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetID}/values/${range}?key=${apiKey}`;
+
+        axios.get(url)
+            .then(response => {
+                var data = parseSheetData(response.data.values);
+                plotMarkers(data, map);
+            })
+            .catch(error => {
+                console.error('Error loading the Google Sheet:', error);
+            });
+
+        function parseSheetData(values) {
+            var headers = values[0];
+            var result = [];
+
+            for (var i = 1; i < values.length; i++) {
+                var obj = {};
+                for (var j = 0; j < headers.length; j++) {
+                    obj[headers[j]] = values[i][j];
+                }
+                result.push(obj);
+            }
+
+            return result;
+        }
+
+        function plotMarkers(data, map) {
+            var markers = [];
+            data.forEach(function(row) {
+                if (row.Latitude && row.Longitude) {
+                    var marker = L.marker([parseFloat(row.Latitude), parseFloat(row.Longitude)])
+                        .addTo(map)
+                        .bindPopup(`<h3>${row.Name}</h3><p>${row.Description}</p>`);
+                    markers.push(marker);
+                    marker.feature = {
+                        properties: {
+                            Name: row.Name
+                        }
+                    };
+                }
+            });
+
+            // Add search control to the map
+            var searchControl = new L.Control.Search({
+                layer: L.layerGroup(markers),
+                propertyName: 'Name',
+                marker: false,
+                moveToLocation: function(latlng, title, map) {
+                    map.setView(latlng, 10); // set the zoom level and center the map
+                }
+            });
+            searchControl.on('search:locationfound', function(e) {
+                if(e.layer._popup)
+                    e.layer.openPopup();
+            }).on('search:collapsed', function(e) {
+                map.eachLayer(function (layer) {
+                    map.closePopup();
+                });
+            });
+
+            map.addControl(searchControl);
+        }
+    </script>
+</body>
+</html>
